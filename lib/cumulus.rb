@@ -23,6 +23,7 @@ module Cumulus
             budget.type, budget.subject]
         end
       end
+
       puts Terminal::Table.new(headings: ['Predicted spend', 'Budget threshold', 'Type', 'Subject'], rows: rows)
     end
 
@@ -30,26 +31,43 @@ module Cumulus
     def credentials
       credentials = Client.new(auth_token: token).credentials
       rows = []
+
       credentials.each do |cred|
         rows << [cred.vendor_key, cred.nickname]
       end
+
       puts Terminal::Table.new(headings: ['Vendor key', 'Nickname'], rows: rows)
     end
 
-    method_options count: :numeric
+    method_options count:  :numeric, default: 10, desc: 'Rows to display.'
+    method_options by:     :string, default: :period, desc: 'Dimention to report on.'
+    method_options period: :string, desc: 'Period to report on. YYYY-MM-DD form. First day of the month only.'
     desc 'billing', 'Displays a table of recent billing reports'
     def billing
+      c = Client.new(auth_token: token)
       count = options[:count] || 10
-      reports = Client.new(auth_token: token).billing_report(by: :period).reverse[0..count]
-      rows = []
-      reports.each do |report|
-        rows << [report.period, '$' + number_with_delimiter(report.spend).to_s]
+
+      if options[:period]
+        reports = c.billing_report(by: options[:by], period: options[:period])
+      else
+        reports = c.billing_report(by: options[:by])
       end
-      puts Terminal::Table.new(headings: ['Period', 'Spend'], rows: rows)
+
+      reports = reports[0..count].reverse
+
+      reports.sort_by!{ |r| r.spend }.reverse! # sort by spend
+      rows = []
+
+      reports.each do |report|
+        dimention = dimention_to_attribute(options[:by])
+        rows << [report[dimention], '$' + number_with_delimiter(report.spend).to_s]
+      end
+
+      puts Terminal::Table.new(headings: [options[:by].capitalize, 'Spend'], rows: rows)
     end
 
     method_options state: :string
-    method_options role: :string
+    method_options role:  :string
     desc 'invites', 'Displays a table of organization invitations'
     def invites
       invites = Client.new(auth_token: token).organization_invitations
@@ -61,6 +79,7 @@ module Cumulus
       invites.each do |invite|
         rows << [invite.user.full_name, invite.user.email, invite.organization_role.label, invite.state]
       end
+
       puts Terminal::Table.new(headings: ['Name', 'Email', 'Role', 'State'], rows: rows)
     end
 
@@ -85,6 +104,19 @@ module Cumulus
     end
 
   private
+
+    # Maps dimention to attribute for billing command.
+    #
+    # @param [String] dimention
+    # @return [Symbol] attribute
+    def dimention_to_attribute(dimention)
+      case dimention
+      when 'period'
+        :period
+      else
+        (dimention + '_name').to_sym
+      end
+    end
 
     def token
       n = Netrc.read
