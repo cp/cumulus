@@ -46,11 +46,12 @@ module Cumulus
     def billing
       c = Client.new(auth_token: token)
       count = options[:count] || 10
+      by = options[:by] || 'period'
 
       if options[:period]
-        reports = c.billing_report(by: options[:by], period: options[:period])
+        reports = c.billing_report(by: by, period: options[:period])
       else
-        reports = c.billing_report(by: options[:by])
+        reports = c.billing_report(by: by)
       end
 
       reports = reports[0..count].reverse
@@ -59,11 +60,11 @@ module Cumulus
       rows = []
 
       reports.each do |report|
-        dimention = dimention_to_attribute(options[:by])
+        dimention = dimention_to_attribute(by)
         rows << [report[dimention], '$' + number_with_delimiter(report.spend).to_s]
       end
 
-      puts Terminal::Table.new(headings: [options[:by].capitalize, 'Spend'], rows: rows)
+      puts Terminal::Table.new(headings: [by.capitalize, 'Spend'], rows: rows)
     end
 
     method_options state: :string
